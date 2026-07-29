@@ -36,4 +36,38 @@ class DedupeKeyGeneratorTest {
 
         assertThat(generator.generate(a)).isNotEqualTo(generator.generate(b));
     }
+
+    // --- Change request: partner with no stable eventId ---
+
+    @Test
+    void changeRequest_resendWithOnlyReceivedAtDifferingProducesSameKey() {
+        IngestEventRequest first = new IngestEventRequest(null, "swifthaul", "ship-5", EventStatus.OUT_FOR_DELIVERY, T1, T1, "Rotterdam");
+        IngestEventRequest resend = new IngestEventRequest(null, "swifthaul", "ship-5", EventStatus.OUT_FOR_DELIVERY, T1, T1.plusSeconds(90), "Rotterdam");
+
+        assertThat(generator.generate(first)).isEqualTo(generator.generate(resend));
+    }
+
+    @Test
+    void changeRequest_genuinelyDifferentUpdateProducesDifferentKey() {
+        IngestEventRequest outForDelivery = new IngestEventRequest(null, "swifthaul", "ship-5", EventStatus.OUT_FOR_DELIVERY, T1, T1, "Rotterdam");
+        IngestEventRequest delivered = new IngestEventRequest(null, "swifthaul", "ship-5", EventStatus.DELIVERED, T1.plusSeconds(3600), T1.plusSeconds(3600), "Rotterdam");
+
+        assertThat(generator.generate(outForDelivery)).isNotEqualTo(generator.generate(delivered));
+    }
+
+    @Test
+    void changeRequest_locationCasingAndWhitespaceIsNormalized() {
+        IngestEventRequest a = new IngestEventRequest(null, "swifthaul", "ship-5", EventStatus.OUT_FOR_DELIVERY, T1, T1, "Rotterdam");
+        IngestEventRequest b = new IngestEventRequest(null, "swifthaul", "ship-5", EventStatus.OUT_FOR_DELIVERY, T1, T1, "  ROTTERDAM  ");
+
+        assertThat(generator.generate(a)).isEqualTo(generator.generate(b));
+    }
+
+    @Test
+    void blankEventIdIsTreatedTheSameAsNullEventId() {
+        IngestEventRequest nullId = new IngestEventRequest(null, "swifthaul", "ship-5", EventStatus.OUT_FOR_DELIVERY, T1, T1, "Rotterdam");
+        IngestEventRequest blankId = new IngestEventRequest("   ", "swifthaul", "ship-5", EventStatus.OUT_FOR_DELIVERY, T1, T1, "Rotterdam");
+
+        assertThat(generator.generate(nullId)).isEqualTo(generator.generate(blankId));
+    }
 }

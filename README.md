@@ -24,9 +24,10 @@ is deliberately narrow:
 
 ## Assumptions
 
-1. **Every courier partner provides a stable, unique `eventId` per update.** This is what the
-   brief's example payload implies, and it's the simplest thing that could be true. (Revisited by
-   the change request - see below.)
+1. **~~Every courier partner provides a stable, unique `eventId` per update.~~** This was the v1
+   assumption (it's what the brief's example payload implies, and it's the simplest thing that
+   could be true). The change request revisits it - see below - by adding a fallback path for
+   partners that can't meet it, rather than replacing the assumption for everyone.
 2. **`occurredAt` is business time and is trustworthy.** It's courier-supplied, but it's the only
    signal we have for "when did this actually happen", and the brief explicitly asks for current
    state to be reported by `occurredAt`, not `receivedAt`. If a partner's clock is unreliable in
@@ -177,8 +178,47 @@ Other choices worth calling out:
 
 ## Change request
 
-See the second commit in this repo and the "Change request" section further down / `docs/AI_PROCESS.md`
-for what changed when a new partner turned out not to be able to provide a stable `eventId`.
+**The scenario**: a new courier partner ("swifthaul" in the tests) cannot provide a stable
+`eventId`. It resends the same update multiple times, sometimes with a different `receivedAt`.
+The service still needs to avoid obvious duplicates while preserving auditability.
+
+**What changed:**
+
+- `IngestEventRequest.eventId` went from required (`@NotBlank`) to optional.
+- `DedupeKeyGenerator` gained a second branch: when `eventId` is absent, the dedupe key is built
+  from `partner + shipmentId + status + occurredAt + location` (location normalized for
+  case/whitespace) instead of `partner + eventId`. This deliberately excludes `receivedAt` - the
+  field this partner varies on resend - and produces the same key for two resends of an identical
+  update, while a genuinely new update (different status and/or time) still gets a new key.
+
+**What stayed exactly the same, and why:**
+
+- The `shipment_events` table, its unique constraint, `ShipmentEventRepository`,
+  `ShipmentStateResolver`, both controllers, and the ingest/query flow in `ShipmentEventService` -
+  none of it changed. The dedupe key was already an opaque, precomputed string as far as every
+  other part of the system was concerned (ADR-002); only the one function that computes it needed
+  a new branch. That's the direct payoff of not having baked "eventId is the identity" into the
+  schema or the constraint itself in v1.
+- This is a real answer to the brief's key question ("does your design absorb this change cleanly,
+  or does it break?"): it absorbed it as a ~15-line diff in one class, plus a validation
+  annotation removed, plus tests. No migration, no new table, no changed API contract for existing
+  (stable-`eventId`) partners.
+
+**What I'd still need for production:**
+
+- The content-hash key is an approximation of identity, not a guarantee. Two concrete ways it can
+  go wrong: (a) if this partner ever legitimately re-reports the exact same status with a
+  meaningfully different `occurredAt` for what is actually the same physical event (e.g. clock
+  jitter on their side), it would be wrongly accepted as a new event rather than deduplicated; (b)
+  if `location` free text varies in ways beyond case/whitespace (e.g. "Rotterdam Port" vs.
+  "Rotterdam"), two reports of the same real update could be treated as different. The real fix is
+  getting this partner to supply *some* stable idempotency token, even a client-generated UUID per
+  logical update, and pushing this content-hash approach back to being a fallback of last resort
+  rather than a normal path.
+- A short TTL/window-based fuzzy-match instead of an exact content hash, if (a) above turns out to
+  matter in practice.
+- Monitoring on how often the fallback path actually collapses events, to catch if it's over- or
+  under-deduplicating in production traffic.
 
 ## Testing
 
