@@ -46,7 +46,7 @@ is deliberately narrow:
 
 ## How to run
 
-Requires Java 21 and Maven (no Docker needed).
+Requires Java 17 and Maven (no Docker needed).
 
 ```bash
 mvn spring-boot:run
