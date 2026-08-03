@@ -36,16 +36,14 @@ explicit about rather than glossing over.
 
 ## Where I overrode Claude's first suggestion
 
-When first sketching the duplicate-detection approach, Claude's first version (in the throwaway
-prototype used to verify the logic, not the final service) used a plain in-memory `HashSet<String>`
-of seen keys to simulate "already processed". That's fine for proving the *classification* logic
-works, but it is exactly the anti-pattern the brief itself warns about: it doesn't survive a
-restart, and it silently breaks the moment there's more than one instance of the service running.
-I had it replace that with what's actually in the service now - a real database unique constraint,
-with the in-memory check kept only as a fast pre-check, not the source of truth. That decision is
-written up as ADR-002. I'm calling this out specifically because it's close to the exact example
-the brief itself gives of "good AI usage" - and it happened for a real reason, not because I went
-looking for an example to cite.
+When first sketching duplicate detection, the throwaway prototype used to verify the
+classification logic (see above) tracked "already processed" keys with a plain in-memory
+`HashSet<String>`. That's fine for proving the resolution rules work in isolation, but it doesn't
+hold up as a real mechanism: it forgets everything on restart, and it wouldn't even be internally
+consistent across more than one running instance, since each instance would have its own set. I
+had that replaced with what's actually in the service now - a database unique constraint on a
+precomputed key column, with an existence check kept only as a fast pre-check, not the source of
+truth. Written up in full in ADR-002.
 
 ## Other judgment calls I made rather than defaulted to
 
