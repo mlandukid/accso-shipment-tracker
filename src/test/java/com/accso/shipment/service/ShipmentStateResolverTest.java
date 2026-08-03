@@ -81,4 +81,26 @@ class ShipmentStateResolverTest {
         assertThat(ShipmentStateResolver.hasConflict(List.of(normal, conflict))).isTrue();
         assertThat(ShipmentStateResolver.hasConflict(List.of(normal))).isFalse();
     }
+
+    /**
+     * Composite edge case: a shipment whose history contains BOTH a stale
+     * out-of-order event AND a same-timestamp conflict at once - not just
+     * one weird thing at a time. resolveCurrent has to ignore the historical
+     * (older) event entirely and still correctly apply the precedence
+     * tie-break between the two events that share the latest occurredAt.
+     */
+    @Test
+    void resolveCurrentIgnoresHistoricalEventsAndStillAppliesPrecedenceAmongConflictingLatestEvents() {
+        ShipmentEvent historical = accepted("evt-0", EventStatus.LABEL_CREATED, T0, IngestOutcome.ACCEPTED_NO_STATE_CHANGE);
+        ShipmentEvent original = accepted("evt-1", EventStatus.IN_TRANSIT, T1, IngestOutcome.ACCEPTED_STATE_CHANGED);
+        ShipmentEvent conflicting = accepted("evt-2", EventStatus.DELIVERY_EXCEPTION, T1, IngestOutcome.ACCEPTED_CONFLICT);
+
+        Optional<ShipmentEvent> winner = ShipmentStateResolver.resolveCurrent(List.of(historical, original, conflicting));
+
+        assertThat(winner).isPresent();
+        // The historical T0 event must not influence the outcome at all -
+        // the winner is decided purely between the two T1 events.
+        assertThat(winner.get().getStatus()).isEqualTo(EventStatus.DELIVERY_EXCEPTION);
+        assertThat(ShipmentStateResolver.hasConflict(List.of(historical, original, conflicting))).isTrue();
+    }
 }

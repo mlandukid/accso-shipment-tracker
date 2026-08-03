@@ -220,6 +220,16 @@ The service still needs to avoid obvious duplicates while preserving auditabilit
 - Monitoring on how often the fallback path actually collapses events, to catch if it's over- or
   under-deduplicating in production traffic.
 
+## Time spent
+
+About 4.5 hours, within the brief's suggested 4-6 hour range. That was spent AI-paired end to
+end: designing the model and the two ADRs, generating the implementation and tests, then working
+through it deliberately - reviewing the design decisions, fixing a Java-version mismatch between
+the pom and my local JDK, and manually exercising all four ingest outcomes (state change,
+out-of-order, conflict, duplicate) against the running app before considering it done. See
+`docs/AI_PROCESS.md` for the detail on where I pushed back on or diverged from what was
+generated.
+
 ## Testing
 
 - `ShipmentStateResolverTest` - the decision logic (current-state resolution, out-of-order
